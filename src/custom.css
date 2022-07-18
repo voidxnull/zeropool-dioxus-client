@@ -1,0 +1,20 @@
+:root {
+    --border-radius: 0rem;
+}
+
+.tabs {
+
+}
+
+.tabs-header {
+    display: flex;
+    margin: 0;
+}
+
+.tabs-body {
+
+}
+
+.tabs > * {
+    margin: 0;
+}

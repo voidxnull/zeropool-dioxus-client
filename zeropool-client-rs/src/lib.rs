@@ -1,10 +1,9 @@
-use libzeropool_rs::client::TxType;
 use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::engines::Bn256;
 use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::prover::Proof;
-use libzeropool_rs::libzeropool::native::params::{PoolBN256, PoolParams as PoolParamsTrait};
 use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
+use libzeropool_rs::libzeropool::native::params::{PoolBN256, PoolParams as PoolParamsTrait};
 use reqwest::Url;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub type PoolParams = PoolBN256;
 pub type Fr = <PoolParams as PoolParamsTrait>::Fr;
@@ -15,13 +14,13 @@ pub type SnarkProof = Proof<Engine>;
 pub fn test_prover() {
     use std::time::Instant;
 
+    use libzeropool_rs::client::state::State;
+    use libzeropool_rs::client::{TxType, UserAccount};
     use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::engines::Bn256;
     use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::Parameters;
     use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
     use libzeropool_rs::libzeropool::native::boundednum::BoundedNum;
     use libzeropool_rs::libzeropool::POOL_PARAMS;
-    use libzeropool_rs::client::state::State;
-    use libzeropool_rs::client::{TxType, UserAccount};
     use libzeropool_rs::proof::prove_tx;
 
     println!("Start");
@@ -66,16 +65,77 @@ pub async fn relayer_info(url: &str) -> RelayerInfo {
 
 pub async fn fetch_transactions(url: &str, offset: u64, limit: u64) -> Vec<String> {
     let mut url = Url::parse(url).unwrap().join("/transactions").unwrap();
-    url.query_pairs_mut().extend_pairs([
-        ("offset", offset.to_string().as_str()),
-        ("limit", limit.to_string().as_str()),
-    ].iter().cloned());
+    url.query_pairs_mut().extend_pairs(
+        [
+            ("offset", offset.to_string().as_str()),
+            ("limit", limit.to_string().as_str()),
+        ]
+        .iter()
+        .cloned(),
+    );
     let res = reqwest::get(url).await.unwrap();
     res.json().await.unwrap()
 }
 
-// pub async fn send_transaction(url: &str, proof: SnarkProof, memo: &[u8], tx_type: TxType<Fr>, deposit_signature: Option<String>) -> u64 {
-//     let mut url = Url::parse(url).unwrap().join("/transactions").unwrap();
+#[repr(u16)]
+pub enum TxType {
+    Deposit = 0,
+    Transfer = 1,
+    Withdraw = 2,
+    DepositBridged = 1 << 12,
+}
+
+pub async fn send_transaction(
+    url: &str,
+    proof: SnarkProof,
+    memo: &[u8],
+    tx_type: TxType,
+    deposit_signature: Option<String>,
+) -> u64 {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Transaction<'a> {
+        proof: SnarkProof,
+        memo: &'a [u8],
+        tx_type: String,
+        deposit_signature: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Res {
+        job_id: u64,
+    }
+
+    let body = Transaction {
+        proof,
+        memo,
+        tx_type: format!("{:#02}", tx_type as u16),
+        deposit_signature,
+    };
+
+    let url = Url::parse(url).unwrap().join("/transaction").unwrap();
+    let client = reqwest::Client::new();
+    let res: Res = client
+        .post(url)
+        .json(&body)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    res.job_id
+}
+
+// pub async fn get_job(url: &str, job_id: u64) -> String {
+//     let url = Url::parse(url)
+//         .unwrap()
+//         .join(&format!("/job/{}", job_id))
+//         .unwrap();
+//     let res = reqwest::get(url).await.unwrap();
+//     res.text().await.unwrap()
 // }
 
 /*

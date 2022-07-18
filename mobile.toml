@@ -1,0 +1,8 @@
+[app]
+name = "zeropool-dioxus-client"
+stylized-name = "Zeropool Dioxus Client Mobile"
+domain = "voidxnull.com"
+template-pack = "winit"
+
+[apple]
+development-team = "7DXKGG3Y8W"
